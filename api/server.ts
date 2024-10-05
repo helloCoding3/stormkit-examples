@@ -1,51 +1,36 @@
 import * as http from 'http';
-import fetch, { RequestInit } from 'node-fetch';
+import { Readable } from 'stream';
 
-export default async (req: http.IncomingMessage, res: http.ServerResponse) => {
+export default (req: http.IncomingMessage, res: http.ServerResponse) => {
   console.log('sample log from sample-project');
 
-  // 假设这是你代理转发的目标URL，这里是从请求参数中获取的
-  const targetUrl = new URL(req.url || '').searchParams.get('url') || '';
+  // 获取请求头
+  const headers = req.headers;
 
-  // 如果没有提供目标URL，则返回错误
-  if (!targetUrl) {
-    res.writeHead(400, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'No target URL provided' }));
-    return;
-  }
-
-  // 收集请求体
+  // 用于收集请求体的数据
   let body = '';
+
+  // 监听 'data' 事件，用于收集请求体数据
   req.on('data', (chunk) => {
     body += chunk.toString();
   });
 
-  // 等待请求体接收完毕
-  await new Promise((resolve) => req.on('end', resolve));
-
-  // 设置转发请求的选项
-  const fetchOptions: RequestInit = {
-    method: req.method || 'GET',
-    headers: req.headers as any,
-    body: body,
-    redirect: 'manual', // 禁止自动重定向，因为我们想要控制响应
-  };
-
-  // 使用fetch转发请求
-  try {
-    const response = await fetch(targetUrl, fetchOptions);
+  // 监听 'end' 事件，当请求体传输完成时触发
+  req.on('end', () => {
+    // 打印请求头和请求体
+    console.log('Request Headers:', headers);
+    console.log('Request Body:', body);
 
     // 设置响应头
-    res.writeHead(response.status, {
-      ...response.headers.raw(),
-      // 由于fetch的Headers对象与Node.js的http.OutgoingHttpHeaders不完全兼容，可能需要手动转换
-    });
+    res.setHeader('Content-Type', 'application/json');
 
-    // 将响应流转发到客户端
-    response.body.pipe(res);
-  } catch (error) {
-    // 处理fetch错误
-    res.writeHead(500, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'An error occurred during the fetch operation' }));
-  }
+    // 响应客户端，包含请求头和请求体
+    res.write(JSON.stringify({
+      headers: headers,
+      body: body
+    }));
+
+    // 结束响应
+    res.end();
+  });
 };
